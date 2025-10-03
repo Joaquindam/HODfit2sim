@@ -7,3 +7,4 @@
 *.out
 src/__pycache__
 output/
+.idea/
