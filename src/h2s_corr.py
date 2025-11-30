@@ -2,6 +2,7 @@ import h5py
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+from Corrfunc.theory.xi import xi
 
 def export_positions(
     infile,
@@ -56,8 +57,6 @@ def export_positions(
 
     return outfile
 
-from Corrfunc.theory.xi import xi
-
 def compute_correlation_corrfunc(
     positions_file,
     output_file,
@@ -65,6 +64,7 @@ def compute_correlation_corrfunc(
     rmin,
     rmax,
     n_bins,
+    log_binning=True,
     n_threads=4,
     verbose=True
 ):
@@ -106,9 +106,13 @@ def compute_correlation_corrfunc(
     x_data, y_data, z_data = data[:, 0], data[:, 1], data[:, 2]
 
     if verbose:
-        print("Generating log-spaced bins...")
-    rbins = np.logspace(np.log10(rmin), np.log10(rmax), n_bins + 1)
-    r_centers = 0.5 * (rbins[:-1] + rbins[1:])
+        print("Generating bins...")
+        if log_binning == True:
+            rbins = np.logspace(np.log10(rmin), np.log10(rmax), n_bins + 1)
+            r_centers = 0.5 * (rbins[:-1] + rbins[1:])
+        else:
+            rbins = np.linspace(rmin, rmax, n_bins + 1)
+            r_centers = 0.5 * (rbins[:-1] + rbins[1:])
 
     if verbose:
         print("Computing ξ(r) with Corrfunc...")
@@ -197,8 +201,7 @@ def export_positions_redshift_space(
     # Hubble parameter at this redshift
     H0 = 100.0 * h  # km/s/Mpc
     Hz = H0 * np.sqrt(Omega_m * (1 + z_snap) ** 3 + Omega_L)
-    #a = 1.0 / (1.0 + z_snap)
-    a = 1
+    a = 1.0 / (1.0 + z_snap)
 
     if verbose:
         print(f"Cosmology: Omega_m = {Omega_m}, Omega_L = {Omega_L}, h = {h:.4f}")
@@ -214,13 +217,13 @@ def export_positions_redshift_space(
 
     # Shift line-of-sight positions
     if los_axis == 'x':
-        s_los = x + vx * a / (Hz)
+        s_los = x + (vx) / (Hz)
         positions = np.vstack([s_los, y, z]).T
     elif los_axis == 'y':
-        s_los = y + vy * a/ (Hz)
+        s_los = y + (vy) / (Hz)
         positions = np.vstack([x, s_los, z]).T
     else:  # 'z'
-        s_los = z + vz * a / (Hz)
+        s_los = z + (vz) / (Hz)
         positions = np.vstack([x, y, s_los]).T
 
     # Ensure output directory exists

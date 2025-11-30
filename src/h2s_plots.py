@@ -48,15 +48,16 @@ def plot_correlation_function(
 
     if has_error:
         err = data[:, err_index]
-        plt.errorbar(r, xi, yerr=err, fmt='+', capsize=2, label=r'$\xi(r)$ with errors')
+        plt.errorbar(r, xi, yerr=err, fmt='+', capsize=2, color='royalblue', label=r'$\xi(r)$')
     else:
-        plt.plot(r, xi, marker='+', linestyle='-', label=r'$\xi(r)$')
+        plt.plot(r, xi, marker='+', linestyle='-', color='royalblue', label=r'$\xi(r)$')
 
-    plt.xlabel(r"$r$ [$h^{-1}$ Mpc]")
-    plt.ylabel(r"$\xi(r)$")
-    plt.title("Galaxy 2-Point Correlation Function")
-    plt.grid(True, which='both', ls='--', alpha=0.3)
-    plt.legend()
+    plt.xlabel(r"$r \; [\,h^{-1}\,\mathrm{Mpc}\,]$", fontsize=13)
+    plt.ylabel(r"$\xi(r)$", fontsize=13)
+    plt.legend(frameon=False, fontsize=13, loc="upper right")
+
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
 
     if output_png:
         plt.tight_layout()
@@ -68,7 +69,73 @@ def plot_correlation_function(
 
     plt.close()
 
-def plot_radial_profile(profile_file, output_png=None, show=True, loglog = True):
+def plot_correlation_function_redshift_space(
+    filename,
+    output_png=None,
+    loglog=True,
+    show=True,
+    r_index=0,
+    xi_index=1,
+    err_index=2 
+):
+    """
+    Plots xi(s) vs s (and optionally error bars) from a .txt file.
+    Now supports plotting error bars if present (Corrfunc output).
+
+    Parameters:
+    -----------
+    filename : str
+        Path to the .txt file (output from Corrfunc or CUTE).
+    output_png : str or None
+        If provided, path to save the plot as a PNG file.
+    loglog : bool
+        If True, use log-log scale.
+    show : bool
+        If True, display the plot interactively.
+    r_index : int
+        Index of the r column.
+    xi_index : int
+        Index of the xi(r) column.
+    err_index : int
+        Index of the error column (if present).
+    """
+    # Load the data
+    data = np.loadtxt(filename, comments='#', delimiter=',')
+    r = data[:, r_index]
+    xi = data[:, xi_index]
+    # If there is a third column, treat as error bars
+    has_error = data.shape[1] > err_index
+
+    plt.figure(figsize=(6, 5))
+    if loglog:
+        plt.xscale('log')
+        plt.yscale('log')
+
+    if has_error:
+        err = data[:, err_index]
+        plt.errorbar(r, xi, yerr=err, fmt='+', capsize=2, color='royalblue', label=r'$\xi_{0}(s)$')
+    else:
+        plt.plot(r, xi, marker='+', linestyle='-', color='royalblue', label=r'$\xi_{0}(s)$')
+
+    plt.xlabel(r"$s \; [\,h^{-1}\,\mathrm{Mpc}\,]$", fontsize=13)
+    plt.ylabel(r"$\xi_{0}(s)$", fontsize=13)
+    plt.legend(frameon=False, fontsize=13, loc="upper right")
+
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
+
+    if output_png:
+        plt.tight_layout()
+        plt.savefig(output_png, dpi=300)
+        print(f" Plot saved to: {output_png}")
+
+    if show:
+        plt.show()
+
+    plt.close()
+
+
+def plot_radial_profile(profile_file, output_png=None, show=True, loglog=True):
     """
     Plot the radial profile of satellites (counts) from an HDF5 file
     without any analytic fitting, using log-log axes.
@@ -92,18 +159,20 @@ def plot_radial_profile(profile_file, output_png=None, show=True, loglog = True)
         r = f["radial_bins"][:]
         counts = f["counts"][:]
 
+    sigma = np.sqrt(counts)
     # Create log-log plot of observed radial counts
-    plt.figure(figsize=(6, 5))
-    plt.plot(r, counts, marker = '.', color='steelblue', linewidth=1.5, label="Satellite counts")
+    plt.figure(figsize=(5, 6))
+    plt.errorbar(r, counts, yerr=sigma, marker='.', color='k', linestyle='None', label="Satellite galaxies", markersize=8, markeredgewidth=1.4)
     if loglog:
         plt.xscale('log')
         plt.yscale('log')
 
-    plt.xlabel(r"$r$ [$h^{-1}$ Mpc]")
-    plt.ylabel("Satellite counts")
-    plt.title("Radial Profile (Satellite Counts)")
-    plt.grid(True, ls='--', alpha=0.3)
-    plt.legend()
+    plt.xlabel(r"$r\;[h^{-1}\,\mathrm{Mpc}]$")
+    plt.ylabel(r"$N_{\mathrm{counts}}$")
+    
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
+    plt.legend(frameon=False, fontsize=13, loc="upper left")
 
     if output_png:
         plt.tight_layout()
@@ -146,6 +215,8 @@ def plot_radial_profile_fit(profile_file, params, output_png=None, show=True, lo
         counts = f["counts"][:]
     alpha, beta, r0, N0, kappa = params
 
+    sigma = np.sqrt(counts)
+
     # Analytic density function
     def analytic_density(r_vals):
         return N0 * (r_vals / r0)**alpha * (1.0 + (r_vals / r0)**beta)**kappa
@@ -153,20 +224,19 @@ def plot_radial_profile_fit(profile_file, params, output_png=None, show=True, lo
     N_analytic = analytic_density(r)
 
     # Plot observed density and analytic fit on log-log axes
-    plt.figure(figsize=(5, 5))
+    plt.figure(figsize=(6, 6))
     if loglog:
         plt.xscale('log')
         plt.yscale('log')
 
-    plt.plot(r, counts, 'o', label="Observed density", markersize=4)
-    plt.plot(r, N_analytic, '-', label="Analytic fit")
+    plt.errorbar(r, counts, yerr=sigma, fmt='.', label="Satellite galaxies", markersize=8, markeredgewidth=1.4, color='k', linestyle = 'None')
+    plt.plot(r, N_analytic, '-', color='royalblue', lw=2.5, label="Fit to extended NFW profile")
 
-    plt.xlabel(r"$r$ [$h^{-1}$ Mpc]")
-    #plt.ylabel("N_density(r) [counts / Δr]")
-    plt.ylabel("N_counts")
-    plt.title("Radial Profile (density) with Analytic Fit (log-log)")
-    plt.grid(True, ls='--', alpha=0.3)
-    plt.legend()
+    plt.xlabel(r"$r\;[h^{-1}\,\mathrm{Mpc}]$")
+    plt.ylabel(r"$N_{\mathrm{counts}}$")
+    plt.legend(frameon=False, fontsize=13, loc="upper right")
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
 
     if output_png:
         plt.tight_layout()
@@ -179,12 +249,6 @@ def plot_radial_profile_fit(profile_file, params, output_png=None, show=True, lo
     plt.close()
 
 # src/h2s_plots.py
-
-import numpy as np
-import os
-import matplotlib.pyplot as plt
-import h5py
-
 def plot_vr_distribution(vr_profile_file, output_png=None, loglog=False, show=True):
     """
     Plot the radial.velocity distribution (density) of satellites from an HDF5 file.
@@ -211,17 +275,17 @@ def plot_vr_distribution(vr_profile_file, output_png=None, loglog=False, show=Tr
         v_bins = f["velocity_bins"][:]   # bin centers for v_r
         density = f["density"][:]        # counts/bin_width in each bin
 
-    plt.figure(figsize=(6, 5))
+    plt.figure(figsize=(6, 6))
     if loglog:
         plt.xscale('log')
         plt.yscale('log')
 
-    plt.plot(v_bins, density, marker='.', label=r'$dN/dv_r$')
+    plt.plot(v_bins, density, marker='.', linestyle = 'None', markersize = 7, markeredgewidth=2, label=r'$Satellite galaxies$')
     plt.xlabel(r"$v_r$ [$\mathrm{km/s}$]")
-    plt.ylabel(r"Density [counts / l_Bin")
-    plt.title("Radial Velocity Distribution")
-    plt.grid(True, which='both', ls='--', alpha=0.3)
-    plt.legend()
+    plt.ylabel(r"$N_{\mathrm{counts}}/l_{\mathrm{bin}}$")
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
+    plt.legend(frameon=False, fontsize=13, loc="upper right")
 
     if output_png:
         plt.tight_layout()
@@ -260,17 +324,17 @@ def plot_vtan_distribution(vtan_profile_file, output_png=None, loglog=False, sho
         v_bins = f["velocity_bins"][:]   # bin centers for |v_theta|
         density = f["density"][:]        # counts/bin_width in each bin
 
-    plt.figure(figsize=(6, 5))
+    plt.figure(figsize=(6, 6))
     if loglog:
         plt.xscale('log')
         plt.yscale('log')
 
-    plt.plot(v_bins, density, marker='.', label=r'$dN/d|v_\theta|$')
-    plt.xlabel(r"$|v_\theta|$ [$\mathrm{km/s}$]")
-    plt.ylabel(r"Density [counts / l_Bin")
-    plt.title("Tangential Velocity Distribution")
-    plt.grid(True, which='both', ls='--', alpha=0.3)
-    plt.legend()
+    plt.plot(v_bins, density, marker='.', linestyle='None', markersize=7, markeredgewidth=2, label=r'$Satellite galaxies$')
+    plt.xlabel(r"$v_{\mathrm{tan}}$ [$\mathrm{km/s}$]")
+    plt.ylabel(r"$N_{\mathrm{counts}}/l_{\mathrm{bin}}$")
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
+    plt.legend(frameon=False, fontsize=13, loc="upper right")
 
     if output_png:
         plt.tight_layout()
@@ -330,22 +394,20 @@ def plot_kaiser_comparison(
     xi_kaiser = fkaiser * xi_real
 
     plt.figure(figsize=(7,5))
-    plt.plot(r_real, xi_real, 'b-', label=r'Real-space $\xi(r)$')
-    plt.plot(r_red, xi_red, 'g--', label=r'Redshift-space $\xi(s)$')
+    plt.plot(r_real, xi_real, 'b-', label=r'Real-space, $\xi(r)$')
+    plt.plot(r_red, xi_red, 'g--', label=r'Redshift-space, $\xi(s)$')
     plt.plot(r_real, xi_kaiser, 'r-.',
-             label=fr'Kaiser: $f_\mathrm{{K}}\,\xi(r)$, $\gamma$={gamma:.2f}')
+             label=fr'Kaiser: $f_\mathrm{{K}}\, \cdot \xi(r)$, $\gamma$={gamma:.2f}')
     if loglog:
         plt.xscale('log')
         plt.yscale('log')
-    plt.xlabel(r'$r$ [$h^{-1}$ Mpc]')
+    plt.xlabel(r"$r\;[h^{-1}\,\mathrm{Mpc}]$")
     if xlim is not None:
         plt.xlim(xlim)
     if ylim is not None:
         plt.ylim(ylim)
-    plt.ylabel(r'$\xi(r)$')
-    plt.title(fr'Correlation Function: Real, Redshift, Kaiser ($\gamma$={gamma:.2f})')
-    plt.legend()
-    plt.grid(True, which='both', ls='--', alpha=0.3)
+    plt.ylabel(r'$\xi$')
+    plt.legend(frameon=False, fontsize=14, loc="upper right")
     if output_png:
         plt.tight_layout()
         plt.savefig(output_png, dpi=300)
@@ -411,18 +473,18 @@ def plot_hmf(
         N_C = dset["N_C"][:][mask_idx] / (volume * bin_width)
         N_S = dset["N_S"][:][mask_idx] / (volume * bin_width)
 
-    plt.figure(figsize=(7, 5))
-    plt.plot(M_centers, N_C, ls='-', lw=1.5, color='orange', label=f"Centrals")
-    plt.plot(M_centers, N_S, ls='--', lw=1.5, color='steelblue', label=f"Satellites")
+    plt.figure(figsize=(7, 7))
+    plt.plot(M_centers, N_C, ls='-', lw=1.5, color='royalblue', label=f"Central Glaxies")
+    plt.plot(M_centers, N_S, ls='--', lw=1.5, color='royalblue', label=f"Satellite Galaxies")
     plt.plot(M_centers, N_H, ls='-', lw=1.5, color='k', label="DM Halos")
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
 
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlabel(r"$M_{\rm halo}\ [h^{-1} M_\odot]$")
-    plt.ylabel(r"$dn/d\log_{10}(M)\ [({\rm Mpc}/h)^{-3}]$")
-    plt.title("Mass function")
-    plt.grid(True, ls='--', alpha=0.3)
-    plt.legend()
+    plt.xlabel(r"$M_{\rm halo}\ [h^{-1} M_\odot]$", fontsize=13)
+    plt.ylabel(r"$\frac{dn}{d\log_{10}(M)} \; [(\mathrm{Mpc}/\mathrm{h})^{-3}]$", fontsize=14)
+    plt.legend(frameon=False, fontsize=13, loc="upper right")
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     print(f"Results stored in: {output_path}")
@@ -458,17 +520,17 @@ def plot_hod(
             occ_C = np.where(N_H > 0, N_C / N_H, 0)
             occ_S = np.where(N_H > 0, N_S / N_H, 0)
 
-    plt.figure(figsize=(7, 5))
-    plt.plot(M, occ_C, ls='-', lw=1.5, label=f"Centrals")
-    plt.plot(M, occ_S, ls='--', lw=1.5, label=f"Satellites")
+    plt.figure(figsize=(7, 6))
+    plt.plot(M, occ_C, ls='-', lw=1.5, color= 'royalblue', label=f"Central Galaxies")
+    plt.plot(M, occ_S, ls='--', lw=1.5, color= 'royalblue' , label=f"Satellite Galaxies")
 
     plt.xscale('log')
     plt.yscale('log')
-    plt.xlabel(r"$M_{\rm halo}\ [h^{-1} M_\odot]$")
-    plt.ylabel(r"$\langle N(M) \rangle$")
-    plt.title("Halo Occupation Distribution (HOD)")
-    plt.grid(True, ls='--', alpha=0.3)
-    plt.legend()
+    plt.tick_params(axis='both', which='major', labelsize=13)
+    plt.tick_params(axis='both', which='minor', labelsize=13)
+    plt.xlabel(r"$M_{\mathrm{halo}}\,[h^{-1}\,M_\odot]$", fontsize=13)
+    plt.ylabel(r"$\langle N(M) \rangle$", fontsize=13)
+    plt.legend(frameon=False, fontsize=13, loc="upper left")
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     print(f"Plot saved to: {output_path}")
@@ -477,8 +539,7 @@ def plot_hod(
         plt.show()
     plt.close()
 
-def plot_2pcf_ratio(file_normal, file_shuffled, output_png=None, 
-                    xlim=(0.01, 100.0), ylim=(0.5, 1.4), show=True):
+def plot_2pcf_ratio(file_normal, file_shuffled, output_png=None, show=True):
     """
     Plot the ratio between two real-space two-point correlation functions (2PCF):
     a normal catalog and a shuffled catalog.
@@ -507,18 +568,21 @@ def plot_2pcf_ratio(file_normal, file_shuffled, output_png=None,
     mask = xi_shuffled != 0
     ratio[mask] = xi_normal[mask] / xi_shuffled[mask]
     ratio[~mask] = np.nan  # Assign NaN where division by zero occurs
+    ratio_shuffled = np.ones_like(xi_shuffled)
+    ratio_shuffled[mask] = xi_shuffled[mask] / xi_shuffled[mask]
+    ratio_shuffled[~mask] = np.nan  # Assign NaN where division by
 
     # Plot the ratio
     plt.figure(figsize=(9, 6))
-    plt.plot(r_normal, ratio, 'k-', lw=1.5)
+    plt.plot(r_normal, ratio, color='royalblue', linestyle='-', lw=1.5, label='Original Catalog')
+    plt.plot(r_shuffled, ratio_shuffled, color='k', linestyle='--', lw=1.5, label='Shuffled Catalog')
 
-    plt.xlabel(r'$r$ [Mpc/h]')
-    plt.ylabel(r'$\xi_\mathrm{normal} / \xi_\mathrm{shuffled}$')
+    plt.xlabel(r"$r\;[\mathrm{Mpc}/h]$", fontsize=14)
+    plt.ylabel(r"$\xi_{\mathrm{normal}} \,/\, \xi_{\mathrm{shuffled}}$", fontsize=14)
     plt.xscale('log')
-    plt.xlim(*xlim)
-    plt.ylim(*ylim)
-    plt.grid(True, which="both", ls="--", alpha=0.5)
-    plt.title("Ratio of Normal to Shuffled 2PCF")
+    plt.legend(frameon=False, fontsize=14, loc="upper right")
+    plt.tick_params(axis='both', which='major', labelsize=14)
+    plt.tick_params(axis='both', which='minor', labelsize=14)
 
     if output_png:
         plt.tight_layout()
@@ -581,18 +645,16 @@ def plot_kaiser_ratio(real_file, redshift_file, omega_m, bias, gamma,
 
     # Plotting
     plt.figure(figsize=(8, 5))
-    plt.plot(r_real[mask], ratio_redshift, 'g--', label=r'$\xi(s)/\xi(r)$')
-    plt.plot(r_real[mask], ratio_kaiser, 'r-.', label=fr'Kaiser factor $f_k = {f_kaiser:.3f}$')
-    plt.axhline(1, color='k', linestyle=':', alpha=0.5, label='Ratio = 1')
+    plt.plot(r_real[mask], ratio_redshift, 'g--', label=r'$\xi(s)/\xi_{\mathrm{shuffled}}(r)$')
+    plt.plot(r_real[mask], ratio_kaiser, 'r-.', label=fr'Kaiser factor: $f_k = {f_kaiser:.3f}$')
+    plt.axhline(1, color='k', linestyle=':', alpha=0.5)
 
     plt.xscale('log')
     plt.xlim(*xlim)
     plt.ylim(*ylim)
     plt.xlabel(r'$r\ [h^{-1}\ \mathrm{Mpc}]$', fontsize=13)
-    plt.ylabel('Ratio', fontsize=13)
-    plt.title('Ratio of Redshift and Kaiser to Real-space Correlation')
-    plt.grid(True, ls='--', alpha=0.4)
-    plt.legend()
+    plt.ylabel(r"$\xi \,/\, \xi_{\mathrm{shuffled}}(r)$", fontsize=13)
+    plt.legend(frameon=False, fontsize=13, loc="upper right")
     plt.tight_layout()
 
     if output_png:

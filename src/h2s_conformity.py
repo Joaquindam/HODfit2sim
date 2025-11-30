@@ -111,7 +111,7 @@ def compute_conformity_parameters(
     output_file,
     halo_format="txt",
     halo_pid = 13,       
-    halo_mass = 17,       
+    halo_mass = 17,      
     galaxy_format="h5",
     gal_host_id="HostHaloID", 
     gal_main_id="MainHaloID",
@@ -188,6 +188,8 @@ def compute_conformity_parameters(
     if verbose:
         print(f"Loaded {np.sum(mask_host)} host halos from {halo_file}")
 
+    
+
     # 2) Read galaxies (no further flux cut!)
     host_id, main_id, mhalo = load_galaxies(galaxy_file, galaxy_format, gal_host_id, gal_main_id, gal_main_mass)
     mhalo = np.log10(mhalo)
@@ -209,6 +211,21 @@ def compute_conformity_parameters(
 
     S_mwc  = S_m[sel_with]
     S_mwoc = S_m[sel_without]
+
+    if S_ids.size > 0:
+        uniq_parents, sats_per_parent = np.unique(S_ids.astype(np.int64), return_counts=True)
+        k_max = int(sats_per_parent.max())
+        # H_full[k] = nº de halos con k satélites (incluiría k=0 si existiera, pero no hay ceros aquí)
+        H_full = np.bincount(sats_per_parent, minlength=k_max + 1).astype(np.int64)
+        # Guardamos solo k >= 1
+        k_vals = np.arange(1, k_max + 1, dtype=np.int64)
+        H_k = H_full[1:]
+        total_halos_with_satellites = int(uniq_parents.size)
+    else:
+        k_vals = np.array([], dtype=np.int64)
+        H_k = np.array([], dtype=np.int64)
+        k_max = 0
+        total_halos_with_satellites = 0
 
     # 4) Binning
     l_bin = (M_max - M_min) / N_bins
@@ -292,6 +309,50 @@ def compute_conformity_parameters(
     if verbose:
         print(f"Global k1 = {k1_global:.4f}, k2 = {k2_global:.4f}")
 
+     # ---------- NEW: by-mass-bin satellites-per-halo histograms (k >= 1) ----------
+    # We need, for each host with >=1 satellite, its host mass (log10) and its satellite count.
+    # Use the satellite list grouped by S_ids to get one record per host:
+    bybin_k_list = []
+    bybin_H_list = []
+    bybin_counts_hosts = []  # number of hosts with >=1 satellite in the bin
+
+    if S_ids.size > 0:
+        # Sort satellites by parent ID so groups are contiguous
+        order = np.argsort(S_ids)
+        pid_sorted  = S_ids[order]
+        mass_sorted = S_m[order]  # host mass per satellite (should be constant within a halo)
+
+        # Group starts where parent ID changes
+        grp_starts = np.r_[0, np.nonzero(pid_sorted[1:] != pid_sorted[:-1])[0] + 1]
+        # One record per host with >=1 sat:
+        sats_per_parent = np.diff(np.r_[grp_starts, pid_sorted.size]).astype(np.int64)   # K per host (>=1)
+        host_mass_per_parent = mass_sorted[grp_starts]  # take the first mass in the group
+
+        # Build histograms per mass bin
+        edges = np.linspace(M_min, M_max, N_bins + 1)
+        for i in range(N_bins):
+            lo, hi = edges[i], edges[i+1]
+            sel_bin = (host_mass_per_parent >= lo) & (host_mass_per_parent < hi)
+            counts_in_bin = sats_per_parent[sel_bin]  # all >=1 by construction
+            bybin_counts_hosts.append(int(counts_in_bin.size))
+
+            if counts_in_bin.size > 0:
+                k_max_i = int(counts_in_bin.max())
+                H_full_i = np.bincount(counts_in_bin, minlength=k_max_i + 1).astype(np.int64)
+                k_i = np.arange(1, k_max_i + 1, dtype=np.int64)
+                H_i = H_full_i[1:]  # drop 0
+            else:
+                k_i = np.array([], dtype=np.int64)
+                H_i = np.array([], dtype=np.int64)
+
+            bybin_k_list.append(k_i)
+            bybin_H_list.append(H_i)
+    else:
+        # No satellites at all → every bin is empty
+        bybin_counts_hosts = [0 for _ in range(N_bins)]
+        bybin_k_list = [np.array([], dtype=np.int64) for _ in range(N_bins)]
+        bybin_H_list = [np.array([], dtype=np.int64) for _ in range(N_bins)]
+
     # 6) Save to H5
     create_dir(os.path.dirname(output_file))
     with h5py.File(output_file, "w") as out:
@@ -310,6 +371,24 @@ def compute_conformity_parameters(
         glob = grp.create_group("global")
         glob.create_dataset("k1_global", data=k1_global)
         glob.create_dataset("k2_global", data=k2_global)
+
+        sat_grp = glob.create_group("satellites_per_halo")
+        sat_grp.create_dataset("k", data=k_vals)  # k = nº de satélites (1..k_max)
+        sat_grp.create_dataset("N_halos_with_k_satellites", data=H_k)
+        sat_grp.attrs["base"] = "Parent halos with >=1 satellite"
+        sat_grp.attrs["k_min"] = 1
+        sat_grp.attrs["k_max"] = int(k_max)
+        sat_grp.attrs["total_halos_counted"] = int(total_halos_with_satellites)
+
+        bybin_root = grp.create_group("by_bin")
+        sph_root = bybin_root.create_group("satellites_per_halo")
+        for i in range(N_bins):
+            g = sph_root.create_group(f"bin_{i:03d}")
+            g.attrs["M_min"] = float(M_min_bin[i])
+            g.attrs["M_max"] = float(M_max_bin[i])
+            g.attrs["num_halos_with_ge1_sat"] = int(bybin_counts_hosts[i])  # hosts with ≥1 sat in this bin
+            g.create_dataset("k", data=bybin_k_list[i])  # 1..k_max_in_bin (may be empty)
+            g.create_dataset("N_halos_with_k_satellites", data=bybin_H_list[i])  # same length as k
 
     if verbose:
         print("Results written to:", output_file)
@@ -440,6 +519,21 @@ def compute_conformity_parameters_shuffled(
     S_mwc  = logM_gal[sat_with_c_mask]    # satellites with central
     S_mwoc = logM_gal[sat_without_mask]   # satellites without central
 
+    S_parent_ids = main_id[is_s]  # halo padre de cada satélite
+    if S_parent_ids.size > 0:
+        uniq_parents, sats_per_parent = np.unique(S_parent_ids.astype(np.int64), return_counts=True)
+        k_max = int(sats_per_parent.max())
+        H_full = np.bincount(sats_per_parent, minlength=k_max + 1).astype(np.int64)
+        # Guardamos solo k >= 1 (tal y como pediste)
+        k_vals = np.arange(1, k_max + 1, dtype=np.int64)
+        H_k = H_full[1:]
+        total_halos_with_satellites = int(uniq_parents.size)
+    else:
+        k_vals = np.array([], dtype=np.int64)
+        H_k = np.array([], dtype=np.int64)
+        k_max = 0
+        total_halos_with_satellites = 0
+
     # --- sanity check: per bin, N_S should equal N_swc + N_swoc
     # (lo comprobaremos tras el binning)
 
@@ -509,6 +603,42 @@ def compute_conformity_parameters_shuffled(
     if verbose:
         print(f"Global k1 = {k1_global:.4f}, k2 = {k2_global:.4f}")
 
+    bybin_k_list = []
+    bybin_H_list = []
+    bybin_counts_hosts = []
+
+    if S_parent_ids.size > 0:
+        # Sort satellites by parent to aggregate per host
+        order = np.argsort(S_parent_ids.astype(np.int64))
+        pid_sorted  = S_parent_ids.astype(np.int64)[order]
+        mass_sorted = S_m[order]  # host mass per satellite
+
+        grp_starts = np.r_[0, np.nonzero(pid_sorted[1:] != pid_sorted[:-1])[0] + 1]
+        sats_per_parent = np.diff(np.r_[grp_starts, pid_sorted.size]).astype(np.int64)  # K per host (>=1)
+        host_mass_per_parent = mass_sorted[grp_starts]
+
+        for i in range(N_bins):
+            lo, hi = edges[i], edges[i+1]
+            sel_bin = (host_mass_per_parent >= lo) & (host_mass_per_parent < hi)
+            counts_in_bin = sats_per_parent[sel_bin]  # >=1 by construction
+            bybin_counts_hosts.append(int(counts_in_bin.size))
+
+            if counts_in_bin.size > 0:
+                k_max_i = int(counts_in_bin.max())
+                H_full_i = np.bincount(counts_in_bin, minlength=k_max_i + 1).astype(np.int64)
+                k_i = np.arange(1, k_max_i + 1, dtype=np.int64)
+                H_i = H_full_i[1:]  # drop 0
+            else:
+                k_i = np.array([], dtype=np.int64)
+                H_i = np.array([], dtype=np.int64)
+
+            bybin_k_list.append(k_i)
+            bybin_H_list.append(H_i)
+    else:
+        bybin_counts_hosts = [0 for _ in range(N_bins)]
+        bybin_k_list = [np.array([], dtype=np.int64) for _ in range(N_bins)]
+        bybin_H_list = [np.array([], dtype=np.int64) for _ in range(N_bins)]
+
     # 6) Save to H5
     create_dir(os.path.dirname(output_file))
     with h5py.File(output_file, "w") as out:
@@ -528,5 +658,23 @@ def compute_conformity_parameters_shuffled(
         glob.create_dataset("k1_global", data=k1_global)
         glob.create_dataset("k2_global", data=k2_global)
 
+        sat_grp = glob.create_group("satellites_per_halo")
+        sat_grp.create_dataset("k", data=k_vals)  # k = nº de satélites (1..k_max)
+        sat_grp.create_dataset("N_halos_with_k_satellites", data=H_k)
+        sat_grp.attrs["base"] = "Parent halos with >=1 satellite"
+        sat_grp.attrs["k_min"] = 1
+        sat_grp.attrs["k_max"] = int(k_max)
+        sat_grp.attrs["total_halos_counted"] = int(total_halos_with_satellites)
+
+        bybin_root = grp.create_group("by_bin")
+        sph_root = bybin_root.create_group("satellites_per_halo")
+        for i in range(N_bins):
+            g = sph_root.create_group(f"bin_{i:03d}")
+            g.attrs["M_min"] = float(M_min_bin[i])
+            g.attrs["M_max"] = float(M_max_bin[i])
+            g.attrs["num_halos_with_ge1_sat"] = int(bybin_counts_hosts[i])  # hosts with ≥1 sat in this bin
+            g.create_dataset("k", data=bybin_k_list[i])                      # 1..k_max_in_bin (may be empty)
+            g.create_dataset("N_halos_with_k_satellites", data=bybin_H_list[i])
+        
     if verbose:
         print("Results written to:", output_file)
