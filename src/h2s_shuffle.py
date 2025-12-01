@@ -254,6 +254,24 @@ def shuffle_galaxy_catalog_binned(
             vy_new[idx_gal] = vy_shuf[orig_idx_all] + (vy[idx_gal] - vy_ori[orig_idx_all])
             vz_new[idx_gal] = vz_shuf[orig_idx_all] + (vz[idx_gal] - vz_ori[orig_idx_all])
 
+            #vx_new[idx_gal] = vx[idx_gal]  # Mantener la velocidad original
+            #vy_new[idx_gal] = vy[idx_gal]  # Mantener la velocidad original
+            #vz_new[idx_gal] = vz[idx_gal]  # Mantener la velocidad original
+
+            #mask_sat = (is_central[idx_gal] == 0)
+
+            #if np.any(mask_sat):
+                 # Offsets de velocidad respecto al centro del halo ORIGINAL
+                #dvx = vx[idx_gal] - vx_ori[orig_idx_all]
+                #dvy = vy[idx_gal] - vy_ori[orig_idx_all]
+                #dvz = vz[idx_gal] - vz_ori[orig_idx_all]
+
+                # Para SATÉLITES: nueva velocidad = centro barajado + offset de vel (conserva estructura interna)
+                #vx_new[idx_gal[mask_sat]] = vx_shuf[orig_idx_all[mask_sat]] + dvx[mask_sat]
+                #vy_new[idx_gal[mask_sat]] = vy_shuf[orig_idx_all[mask_sat]] + dvy[mask_sat]
+                #vz_new[idx_gal[mask_sat]] = vz_shuf[orig_idx_all[mask_sat]] + dvz[mask_sat]
+
+
             # Nuevo main_id: el shuffleado correspondiente
             main_id_new[idx_gal] = id_shuffled[orig_idx_all]
 
