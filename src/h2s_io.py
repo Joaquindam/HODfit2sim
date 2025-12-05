@@ -243,8 +243,7 @@ def get_selection(infile, inputformat='hdf5',
     check_file(infile, verbose=verbose)
 
     if testing:
-        #limit = const.testlimit
-        limit = 50
+        limit = const.testlimit
     else:
         limit = None    
 
@@ -348,7 +347,7 @@ def filter_log_flux(
             mask = logF > log_fmin
 
             if testing:
-                mask[np.where(mask)[0][100:]] = False
+                mask[np.where(mask)[0][const.testlimit:]] = False
 
             n_selected = np.sum(mask)
             if verbose:
@@ -377,7 +376,7 @@ def filter_log_flux(
         mask = logF > log_fmin
 
         if testing:
-            mask[np.where(mask)[0][100:]] = False
+            mask[np.where(mask)[0][const.testlimit:]] = False
 
         n_selected = np.sum(mask)
         if verbose:
