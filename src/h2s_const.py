@@ -1,6 +1,7 @@
 import numpy as np
 
-testlimit = 50               # Number of Galaxies for testing 
+testlimit_galaxies = 50               # Number of Galaxies for testing
+testlimit_halos = 200                  # Number of Halos for testing
 mp   = 1.67e-27              # Proton mass, kg
 c    = 2.998e8               # Light velocity, m/s
 c_cm = 2.998e10              # Light velocity, cm/s

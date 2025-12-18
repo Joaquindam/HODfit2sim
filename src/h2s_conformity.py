@@ -3,7 +3,8 @@ from src.h2s_io import get_selection, create_dir
 import h5py
 import os
 
-def load_halos(halo_file, file_format, col_pid, col_mass):
+def load_halos(halo_file, file_format, col_pid, col_mass, verbose=True): #quitar verbose=True
+    
     """
     Loads the halo catalog and returns PID and mass arrays.
 
@@ -37,16 +38,25 @@ def load_halos(halo_file, file_format, col_pid, col_mass):
     For ASCII files, columns are assumed to be whitespace-separated and 0-based indexed.
     For H5 files, the function accesses datasets by their string names.
     """
+    if verbose:  
+        print(f"Loading halos from {halo_file} (format={file_format})...")
     if file_format == "txt":
         halos = np.loadtxt(halo_file)
         pid   = halos[:, col_pid]
         mass  = halos[:, col_mass]
+        if verbose:  
+            print(f"Loaded {halos.shape[0]} rows from TXT file.")
     elif file_format == "h5":
         with h5py.File(halo_file, "r") as f:
             pid  = f[col_pid][:]
             mass = f[col_mass][:]
+        if verbose:  
+            print(f"Loaded {len(pid)} halos from H5 file.")
     else:
         raise ValueError("halo_file format not recognised (use 'txt' or 'h5')")
+    if verbose: 
+        print("Halo data loaded successfully.\n")
+        
     return pid, mass
 
 def load_galaxies(galaxy_file, file_format, prop_host_id, prop_main_id, prop_mass):
@@ -116,8 +126,9 @@ def compute_conformity_parameters(
     gal_host_id="HostHaloID", 
     gal_main_id="MainHaloID",
     gal_main_mass="MainMhalo",    
-    verbose=True
-):
+    verbose=True,
+): 
+                
     """
     Computes the satellite conformity parameters k1 and k2 as a function of halo mass.
 
@@ -208,7 +219,6 @@ def compute_conformity_parameters(
 
     sel_with    = np.isin(S_ids, C_ids)
     sel_without = ~sel_with
-
     S_mwc  = S_m[sel_with]
     S_mwoc = S_m[sel_without]
 

@@ -539,7 +539,7 @@ def plot_hod(
         plt.show()
     plt.close()
 
-def plot_2pcf_ratio(file_normal, file_shuffled, output_png=None, show=True):
+def plot_2pcf_ratio(file_normal, file_shuffled, output_png=None, xlim=None, ylim=None, show=True):
     """
     Plot the ratio between two real-space two-point correlation functions (2PCF):
     a normal catalog and a shuffled catalog.

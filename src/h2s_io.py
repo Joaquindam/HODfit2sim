@@ -208,7 +208,7 @@ def add2header(filenom,names,values,verbose=True):
 
 def get_selection(infile, inputformat='hdf5',
                   cutcols=None, mincuts=[None], maxcuts=[None],
-                  testing=False,verbose=False):
+                  testing=True,verbose=True):
     '''
     Get indexes of selected galaxies
 
@@ -347,7 +347,7 @@ def filter_log_flux(
             mask = logF > log_fmin
 
             if testing:
-                mask[np.where(mask)[0][const.testlimit:]] = False
+                mask[np.where(mask)[0][const.testlimit_galaxies:]] = False
 
             n_selected = np.sum(mask)
             if verbose:
@@ -376,7 +376,7 @@ def filter_log_flux(
         mask = logF > log_fmin
 
         if testing:
-            mask[np.where(mask)[0][const.testlimit:]] = False
+            mask[np.where(mask)[0][const.testlimit_galaxies:]] = False
 
         n_selected = np.sum(mask)
         if verbose:
@@ -460,7 +460,10 @@ def split_halo_catalog_by_mass(
 
     # Load halo catalog
     halos = np.loadtxt(halo_file, delimiter=delimiter)
-    masses = halos[:, mass_column]
+    if testing:
+        masses = halos[0:c.testlimit_halos, mass_column]
+    else:
+        masses = halos[:, mass_column]
     mask = masses > 0  # Ensure no negative or zero masses
     halos = halos[mask]
     masses = masses[mask]
