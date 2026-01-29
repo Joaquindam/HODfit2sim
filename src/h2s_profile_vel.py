@@ -1,10 +1,11 @@
 import numpy as np
 import h5py
 import os
-from src.h2s_io import check_file
+from src.h2s_io import get_mask check_file
 from src.h2s_profile_r import get_r, get_diffpos
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+import src.h2s_const as const
 
 def get_vr(x1,y1,z1,x2,y2,z2,vx1,vy1,vz1,vx2,vy2,vz2,box=None):
     """
@@ -150,6 +151,8 @@ def compute_vr_profile(
     galaxy_vx_key="Xvel",
     galaxy_vy_key="Yvel",
     galaxy_vz_key="Zvel",
+    testing=False,
+    rockstar_format=False,
     verbose=True
 ):
     """
@@ -183,7 +186,11 @@ def compute_vr_profile(
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
         halos = np.loadtxt(halo_file)
-        parent_mask = halos[:, halo_pid_key] == -1
+        if testing:
+            halos = halos[:const.testlimit_halos]
+            parent_mask = halos[:, halo_pid_key] == -1
+        else:
+            parent_mask = halos[:, halo_pid_key] == -1
         parent_ids = halos[parent_mask, halo_id_key]
         parent_x = halos[parent_mask, halo_x_key]
         parent_y = halos[parent_mask, halo_y_key]
@@ -294,6 +301,8 @@ def compute_vr_profile_shuffled(
     galaxy_vx_key="Xvel",
     galaxy_vy_key="Yvel",
     galaxy_vz_key="Zvel",
+    testing=False,
+    rockstar_format=False,
     verbose=True
 ):
     """
@@ -327,7 +336,11 @@ def compute_vr_profile_shuffled(
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
         halos = np.loadtxt(halo_file)
-        parent_mask = halos[:, halo_pid_key] == -1
+        if testing:
+            halos = halos[:const.testlimit_halos]
+            parent_mask = halos[:, halo_pid_key] == -1
+        else:
+            parent_mask = halos[:, halo_pid_key] == -1
         parent_ids = halos[parent_mask, halo_id_key]
         parent_x = halos[parent_mask, halo_x_key]
         parent_y = halos[parent_mask, halo_y_key]
@@ -438,6 +451,8 @@ def compute_vtan_profile(
     galaxy_vx_key="Xvel",
     galaxy_vy_key="Yvel",
     galaxy_vz_key="Zvel",
+    testing=False,
+    rockstar_format=False,
     verbose=True
 ):
     """
@@ -473,7 +488,11 @@ def compute_vtan_profile(
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
         halos = np.loadtxt(halo_file)
-        parent_mask = halos[:, halo_pid_key] == -1
+        if testing:
+            halos = halos[:const.testlimit_halos]
+            parent_mask = halos[:, halo_pid_key] == -1
+        else:
+            parent_mask = halos[:, halo_pid_key] == -1
         parent_ids = halos[parent_mask, halo_id_key]
         parent_x = halos[parent_mask, halo_x_key]
         parent_y = halos[parent_mask, halo_y_key]
@@ -592,6 +611,8 @@ def compute_vtan_profile_shuffled(
     galaxy_vx_key="Xvel",
     galaxy_vy_key="Yvel",
     galaxy_vz_key="Zvel",
+    testing=False,
+    rockstar_format=False,
     verbose=True
 ):
     """
@@ -627,7 +648,11 @@ def compute_vtan_profile_shuffled(
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
         halos = np.loadtxt(halo_file)
-        parent_mask = halos[:, halo_pid_key] == -1
+        if testing:
+            halos = halos[:const.testlimit_halos]
+            parent_mask = halos[:, halo_pid_key] == -1
+        else:
+            parent_mask = halos[:, halo_pid_key] == -1
         parent_ids = halos[parent_mask, halo_id_key]
         parent_x = halos[parent_mask, halo_x_key]
         parent_y = halos[parent_mask, halo_y_key]

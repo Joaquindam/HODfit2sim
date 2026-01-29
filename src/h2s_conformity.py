@@ -1,9 +1,10 @@
 import numpy as np
-from src.h2s_io import get_selection, create_dir
+from src.h2s_io import get_mask, create_dir
 import h5py
 import os
+import src.h2s_const as const
 
-def load_halos(halo_file, file_format, col_pid, col_mass, verbose=True): #quitar verbose=True
+def load_halos(halo_file, file_format, col_pid, col_mass, testing=True, verbose=True): #quitar verbose=True
     
     """
     Loads the halo catalog and returns PID and mass arrays.
@@ -42,8 +43,13 @@ def load_halos(halo_file, file_format, col_pid, col_mass, verbose=True): #quitar
         print(f"Loading halos from {halo_file} (format={file_format})...")
     if file_format == "txt":
         halos = np.loadtxt(halo_file)
-        pid   = halos[:, col_pid]
-        mass  = halos[:, col_mass]
+        if testing:
+            halos = halos[:const.testlimit_halos]
+            pid = halos[:, col_pid]
+            mass = halos[:, col_mass]
+        else:
+            pid   = halos[:, col_pid]
+            mass  = halos[:, col_mass]
         if verbose:  
             print(f"Loaded {halos.shape[0]} rows from TXT file.")
     elif file_format == "h5":
@@ -125,7 +131,9 @@ def compute_conformity_parameters(
     galaxy_format="h5",
     gal_host_id="HostHaloID", 
     gal_main_id="MainHaloID",
-    gal_main_mass="MainMhalo",    
+    gal_main_mass="MainMhalo",
+    testing=False,
+    rockstar_format=False,
     verbose=True,
 ): 
                 
@@ -416,7 +424,9 @@ def compute_conformity_parameters_shuffled(
     galaxy_format="h5",
     gal_is_central="is_central", 
     gal_main_id="MainHaloID",
-    gal_main_mass="MainMhalo",    
+    gal_main_mass="MainMhalo",
+    testing=False,
+    rockstar_format=True,
     verbose=True
 ):
     """

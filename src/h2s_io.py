@@ -4,6 +4,20 @@ import h5py
 import numpy as np
 import src.h2s_const as const
 
+
+
+def get_mask(pid, rockstar_format=False):
+   if rockstar_format:
+       mask_host=pid
+       return mask_host
+   else:
+       print("No Rockstar Format")
+
+
+
+
+
+
 def stop_if_no_file(infile):
     '''
     Stop if the file does not exist
@@ -410,6 +424,7 @@ def split_halo_catalog_by_mass(
     output_h5="data/halo_mass_bins.h5",
     columns={"id": 1, "X": 3, "Y": 4, "Z": 5, "vx": 6, "vy": 7, "vz": 8, "pid": 13, "Mass": 17},
     delimiter=None,
+    testing=False,
     verbose=True
 ):
     """
@@ -461,7 +476,10 @@ def split_halo_catalog_by_mass(
     # Load halo catalog
     halos = np.loadtxt(halo_file, delimiter=delimiter)
     if testing:
-        masses = halos[0:c.testlimit_halos, mass_column]
+        halos = halos[:const.testlimit_halos]  #recorto antes de nada los halos en testing
+        masses = halos[:, mass_column]
+        n_selectedhalos = len(masses)  #number of masses = number of halos 
+        print (f"Halos selected (H5): {n_selectedhalos}")
     else:
         masses = halos[:, mass_column]
     mask = masses > 0  # Ensure no negative or zero masses

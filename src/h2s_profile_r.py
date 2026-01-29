@@ -1,9 +1,10 @@
 import numpy as np
 import h5py
 import os
-from src.h2s_io import check_file
+from src.h2s_io import get_mask, check_file
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+import src.h2s_const as const
 
 def boundary_correction(xin, box, groups=False):
     """
@@ -226,6 +227,8 @@ def compute_radial_profile(
     galaxy_x_key="Xpos",
     galaxy_y_key="Ypos",
     galaxy_z_key="Zpos",
+    testing=False,
+    rockstar_format=False,
     verbose=True
 ):
     """
@@ -260,7 +263,11 @@ def compute_radial_profile(
     if halo_format == "txt":
         halos = np.loadtxt(halo_file)
         # filter parent halos (pid == -1)
-        parent_mask = halos[:, halo_pid_key] == -1
+        if testing:
+            halos = halos[:const.testlimit_halos]
+            parent_mask = halos[:, halo_pid_key] == -1
+        else:
+            parent_mask = halos[:, halo_pid_key] == -1
         parent_ids = halos[parent_mask, halo_id_key]
         parent_x = halos[parent_mask, halo_x_key]
         parent_y = halos[parent_mask, halo_y_key]
@@ -348,6 +355,8 @@ def compute_radial_profile_shuffled(
     galaxy_x_key="Xpos",
     galaxy_y_key="Ypos",
     galaxy_z_key="Zpos",
+    testing=False,
+    rockstar_format=False,
     verbose=True
 ):
     """
@@ -382,7 +391,11 @@ def compute_radial_profile_shuffled(
     if halo_format == "txt":
         halos = np.loadtxt(halo_file)
         # filter parent halos (pid == -1)
-        parent_mask = halos[:, halo_pid_key] == -1
+        if testing:
+            halos = halos[:const.testlimit_halos]
+            parent_mask = halos[:, halo_pid_key] == -1
+        else:
+            parent_mask = halos[:, halo_pid_key] == -1
         parent_ids = halos[parent_mask, halo_id_key]
         parent_x = halos[parent_mask, halo_x_key]
         parent_y = halos[parent_mask, halo_y_key]
