@@ -4,6 +4,56 @@ import h5py
 import numpy as np
 import src.h2s_const as const
 
+
+
+def get_mask(pid, rockstar_format=False):
+    if rockstar_format:
+        # Según el manual: -1 es Host, cualquier otro número es Subhalo.
+        # Creamos un array de True/False
+        mask_host = (pid == -1)
+        return mask_host
+    else:
+        # El print personalizado para control de errores
+        print("No Rockstar Format")
+
+
+#def get_central(gal_host_id, gal_main_id, centralformats='sage'):
+#   is_c=True
+#   if centralformats == 'sage':
+#      is_c = (gal_host_id == gal_main_id)
+#   elif centralformats == 'galform':
+#      if gal_main_id>0:
+#         is_c=False
+#   else:
+#      print(f'{centralformats} Central format not recognized')
+#      sys.exit()
+#   return is_c
+
+
+
+def get_central(gal_host_id, gal_main_id, centralformats='sage'):
+        """
+        Identifica galaxias centrales. 
+        Funciona tanto con valores individuales como con arrays (vectores) de NumPy.
+        """
+        if centralformats == 'sage':
+            # Compara los IDs de host y main.
+            # Si son iguales, devuelve True (es central).
+            return (gal_host_id == gal_main_id)
+
+        elif centralformats == 'galform':
+            # En Galform/Shark, el tipo 0 es la central.
+            # Esta línea devuelve True si el ID es 0, y False si es > 0.
+            return (gal_main_id == 0)
+    
+        else:
+            import sys
+            print(f'{centralformats} Central format not recognized')
+            sys.exit()
+
+
+
+
 def stop_if_no_file(infile):
     '''
     Stop if the file does not exist
@@ -208,7 +258,7 @@ def add2header(filenom,names,values,verbose=True):
 
 def get_selection(infile, inputformat='hdf5',
                   cutcols=None, mincuts=[None], maxcuts=[None],
-                  testing=False,verbose=False):
+                  testing=True,verbose=True):
     '''
     Get indexes of selected galaxies
 
@@ -243,8 +293,7 @@ def get_selection(infile, inputformat='hdf5',
     check_file(infile, verbose=verbose)
 
     if testing:
-        #limit = const.testlimit
-        limit = 50
+        limit = const.testlimit
     else:
         limit = None    
 
@@ -297,9 +346,9 @@ def filter_log_flux(
     infile,
     fmin,
     outfile_name,
-    input_format="h5",
+    input_format="hdf5",
     output_format="h5",        
-    param_name="logFHalpha_att",
+    param_name="data/ratio_Halpha",
     verbose=True,
     testing=False,
     delimiter=" ",
@@ -339,16 +388,23 @@ def filter_log_flux(
 
     log_fmin = np.log10(fmin)
 
-    if input_format == "h5":
+    if input_format == "hdf5":
         with h5py.File(infile, "r") as f:
+           # if param_name not in f:
+            #    raise ValueError(f"Field '{param_name}' not found in H5 file.")
+            # Si el nombre viene 'limpio' (sin data/), pero en el H5 está dentro de 'data'
+            if param_name not in f and f"data/{param_name}" in f:
+                param_name = f"data/{param_name}"
+            
+            # Ahora verificamos si existe (ya sea en raíz o en data/)
             if param_name not in f:
-                raise ValueError(f"Field '{param_name}' not found in H5 file.")
-
+                raise ValueError(f"Field '{param_name}' not found in H5 file (busqué en raíz y en data/).")
+            
             logF = f[param_name][:]
             mask = logF > log_fmin
 
             if testing:
-                mask[np.where(mask)[0][100:]] = False
+                mask[np.where(mask)[0][const.testlimit_galaxies:]] = False
 
             n_selected = np.sum(mask)
             if verbose:
@@ -356,13 +412,16 @@ def filter_log_flux(
 
             if output_format == "h5":
                 with h5py.File(output_path, "w") as fout:
-                    for key in f.keys():
-                        data = f[key][:]
-                        if data.shape[0] != len(mask):
-                            if verbose:
-                                print(f"Skipping {key} (non-matching shape)")
-                            continue
-                        fout.create_dataset(key, data=data[mask])
+                   # for key in f.keys():
+                       # data = f[key][:]
+                   for key in f["data"].keys():
+                       data = f["data"][key][:]
+                                                                         
+                       if data.shape[0] != len(mask):
+                           if verbose:
+                               print(f"Skipping {key} (non-matching shape)")
+                           continue
+                       fout.create_dataset(key, data=data[mask])
             else:
                 raise NotImplementedError("Currently only H5 output supported for H5 input.")
 
@@ -377,7 +436,7 @@ def filter_log_flux(
         mask = logF > log_fmin
 
         if testing:
-            mask[np.where(mask)[0][100:]] = False
+            mask[np.where(mask)[0][const.testlimit_galaxies:]] = False
 
         n_selected = np.sum(mask)
         if verbose:
@@ -391,7 +450,7 @@ def filter_log_flux(
                     fout.create_dataset(f"col{col}", data=data[mask, col])
 
     else:
-        raise ValueError("input_format must be 'h5' or 'txt'.")
+        raise ValueError("input_format must be 'hdf5' or 'txt'.")
 
     if verbose:
         print(f"Filtered data saved to {output_path}")
@@ -411,6 +470,7 @@ def split_halo_catalog_by_mass(
     output_h5="data/halo_mass_bins.h5",
     columns={"id": 1, "X": 3, "Y": 4, "Z": 5, "vx": 6, "vy": 7, "vz": 8, "pid": 13, "Mass": 17},
     delimiter=None,
+    testing=False,
     verbose=True
 ):
     """
@@ -460,8 +520,53 @@ def split_halo_catalog_by_mass(
     os.makedirs(os.path.dirname(output_h5), exist_ok=True)
 
     # Load halo catalog
-    halos = np.loadtxt(halo_file, delimiter=delimiter)
-    masses = halos[:, mass_column]
+    # halos = np.genfromtxt(halo_file, delimiter=delimiter, invalid_raise=False) #40 raange hasta minimo PID o necesario
+    #print("🚨 ATENCIÓN: El archivo conflictivo es:", halo_file)
+    #halos = np.genfromtxt(halo_file, delimiter=delimiter, usecols=range(40), comments='#', invalid_raise=False)
+    halos = np.loadtxt(halo_file, skiprows=1)
+    halos = halos[~np.isnan(halos).any(axis=1)]
+    
+    if testing:
+        halos = halos[:const.testlimit_halos]  #recorto antes de nada los halos en testing
+        
+        #USO EL GET_MASK
+        # 2. APLICAMOS EL FILTRO USANDO get_mask
+        if 'pid' in columns:
+            pid_idx = columns['pid']  # El índice 41 que pasas desde el main
+            pids = halos[:, pid_idx]
+            
+            # Llamamos a tu función get_mask (asegúrate de que esté importada o definida arriba)
+            # Esta función devolverá un array de True/False donde PID == -1
+            mask_host = get_mask(pids, rockstar_format=True)
+        
+            # Filtramos el catálogo: solo nos quedamos con las filas que cumplen la máscara
+            halos = halos[mask_host]
+            
+            if verbose:
+                print(f"[INFO] Filtro get_mask aplicado: {len(halos)} Host Halos seleccionados.")
+
+                
+        masses = halos[:, mass_column]
+        n_selectedhalos = len(masses)  #number of masses = number of halos 
+        print (f"Halos selected (H5): {n_selectedhalos}")
+    else:
+        #USO EL GET_MASK
+        # 2. APLICAMOS EL FILTRO USANDO get_mask
+        if 'pid' in columns:
+            pid_idx = columns['pid']  # El índice 41 que pasas desde el main
+            pids = halos[:, pid_idx]
+        
+            # Llamamos a tu función get_mask (asegúrate de que esté importada o definida arriba)
+            # Esta función devolverá un array de True/False donde PID == -1
+            mask_host = get_mask(pids, rockstar_format=True)
+            
+            # Filtramos el catálogo: solo nos quedamos con las filas que cumplen la máscara
+            halos = halos[mask_host]
+            
+            if verbose:
+                print(f"[INFO] Filtro get_mask aplicado: {len(halos)} Host Halos seleccionados.")
+                
+        masses = halos[:, mass_column]
     mask = masses > 0  # Ensure no negative or zero masses
     halos = halos[mask]
     masses = masses[mask]
