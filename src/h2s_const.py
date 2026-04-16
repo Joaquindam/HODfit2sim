@@ -1,7 +1,7 @@
 import numpy as np
 
-testlimit_galaxies = 50               # Number of Galaxies for testing
-testlimit_halos = 200                  # Number of Halos for testing
+testlimit_galaxies = 2000               # Number of Galaxies for testing
+testlimit_halos = 2000                  # Number of Halos for testing
 mp   = 1.67e-27              # Proton mass, kg
 c    = 2.998e8               # Light velocity, m/s
 c_cm = 2.998e10              # Light velocity, cm/s
@@ -27,3 +27,8 @@ boltzmann = 1.38e-23 * 1e4 * kg_to_Msun/(Mpc_to_cm**2)  # Boltzmann constant, Mp
 #   Possible options and models:
 #--------------------------------------------
 inputformats = ['txt','hdf5']
+
+#--------------------------------------------
+#   Possible type formats:
+#--------------------------------------------
+centralformats = ['sage','galform']

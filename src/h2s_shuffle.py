@@ -3,6 +3,7 @@ import os
 import numpy as np
 import h5py
 from src.h2s_profile_r import boundary_correction
+from src.h2s_io import get_central
 
 def shuffle_parent_halos(
     input_hdf5,
@@ -104,7 +105,11 @@ def load_shuffled_halos_from_bins(h5file, verbose=True):
 
     with h5py.File(h5file, "r") as f:
         for i in range(70):
-            group = f[f"bin_{i:02d}"]
+            bin_name = f"bin_{i:02d}"
+            # Miramos si la etiqueta existe en el archivo 'f
+            if bin_name not in f:
+                continue
+            group = f[bien_name]
             id_shuffled_all.append(group["id_shuffled"][:])
             x_all.append(group["X"][:])
             y_all.append(group["Y"][:])
@@ -137,14 +142,14 @@ def shuffle_galaxy_catalog_binned(
     output_file,
     boxsize=1000.0,
     bins=70,
-    galaxy_id_field="MainHaloID",
-    galaxy_host_field="HostHaloID",
-    galaxy_x_field="Xpos",
-    galaxy_y_field="Ypos",
-    galaxy_z_field="Zpos",
-    galaxy_vx_field="Xvel",
-    galaxy_vy_field="Yvel",
-    galaxy_vz_field="Zvel",
+    galaxy_id_field="type",
+    galaxy_host_field="index",
+    galaxy_x_field="xgal",
+    galaxy_y_field="ygal",
+    galaxy_z_field="zgal",
+    galaxy_vx_field="vxgal",
+    galaxy_vy_field="vygal",
+    galaxy_vz_field="vzgal",
     halo_id_original_field="id_original",
     halo_id_shuffled_field="id_shuffled",
     halo_x_original_field="X_original",
@@ -159,6 +164,7 @@ def shuffle_galaxy_catalog_binned(
     halo_vx_shuffled_field="vx_shuffled",
     halo_vy_shuffled_field="vy_shuffled",
     halo_vz_shuffled_field="vz_shuffled",
+    centralformats= "sage",
     verbose=True,
     boundary_correction=None,
 ):
@@ -169,16 +175,18 @@ def shuffle_galaxy_catalog_binned(
     - NO guarda HostHaloID en la salida. En su lugar añade un dataset 'is_central' (uint8) calculado ANTES del shuffle.
     - Aplica corrección periódica final opcional a posiciones.
     """
-    import h5py
-    import numpy as np
+   # import h5py
+   # import numpy as np
 
-    def min_image(d, L):
+   # def min_image(d, L): #ESTABA COMENTADO
         # devuelve desplazamientos en [-L/2, L/2)
-        return (d + 0.5 * L) % L - 0.5 * L
+       # return (d + 0.5 * L) % L - 0.5 * L
 
     # 1) Cargar galaxias
     with h5py.File(galaxy_file, "r") as f:
-        host_id = f[galaxy_host_field][:]
+        #print(f[galaxy_host_field][:])
+        #exit()
+        host_id = f[galaxy_host_field][:] 
         main_id = f[galaxy_id_field][:]
         xpos = f[galaxy_x_field][:]
         ypos = f[galaxy_y_field][:]
@@ -188,17 +196,22 @@ def shuffle_galaxy_catalog_binned(
         vz = f[galaxy_vz_field][:]
         # otros campos, excluyendo los que vamos a recalcular/gestionar nosotros
         other_fields = {k: f[k][:] for k in f if k not in [
-            galaxy_host_field, galaxy_id_field,
+            galaxy_id_field, galaxy_host_field,
             galaxy_x_field, galaxy_y_field, galaxy_z_field,
             galaxy_vx_field, galaxy_vy_field, galaxy_vz_field
-        ]}
+        ]}    
 
+    if centralformats == 'sage':
+        parent_id = main_id
+    elif centralformats == 'galform':
+        parent_id = host_id
+        
     N = len(xpos)
     if verbose:
         print(f"Loaded {N} galaxies.")
 
     # 2) Marcar centrales ANTES del shuffle (0/1)
-    is_central = (host_id == main_id).astype("uint8")
+    is_central = get_central(host_id, main_id, centralformats).astype("uint8")
 
     # 3) Inicializar arrays de salida
     x_new = np.copy(xpos)
@@ -207,7 +220,8 @@ def shuffle_galaxy_catalog_binned(
     vx_new = np.copy(vx)
     vy_new = np.copy(vy)
     vz_new = np.copy(vz)
-    main_id_new = np.copy(main_id)
+    parent_id_new = np.copy(parent_id)
+    host_id = np.copy(host_id)
 
     # 4) Procesar por bins
     with h5py.File(halo_shuffled_file, "r") as f_halo:
@@ -231,18 +245,18 @@ def shuffle_galaxy_catalog_binned(
                 continue
 
             # Índices de galaxias cuyo main_id está en este bin
-            idx_gal = np.where(np.isin(main_id, id_original))[0]
+            idx_gal = np.where(np.isin(parent_id, id_original))[0]
             if len(idx_gal) == 0:
                 continue
 
             # Mapeo id_original -> índice dentro del bin, y vector de índices por galaxia
             id_to_idx = {int(hid): j for j, hid in enumerate(id_original)}
-            orig_idx_all = np.fromiter((id_to_idx[int(h)] for h in main_id[idx_gal]), dtype=int, count=len(idx_gal))
+            orig_idx_all = np.fromiter((id_to_idx[int(h)] for h in parent_id[idx_gal]), dtype=int, count=len(idx_gal))
 
             # Offsets con imagen mínima respecto al main original
-            dx = min_image(xpos[idx_gal] - X_ori[orig_idx_all], boxsize)
-            dy = min_image(ypos[idx_gal] - Y_ori[orig_idx_all], boxsize)
-            dz = min_image(zpos[idx_gal] - Z_ori[orig_idx_all], boxsize)
+            dx = compute_relative_offset(xpos[idx_gal] - X_ori[orig_idx_all], boxsize)
+            dy = compute_relative_offset(ypos[idx_gal] - Y_ori[orig_idx_all], boxsize)
+            dz = compute_relative_offset(zpos[idx_gal] - Z_ori[orig_idx_all], boxsize)
 
             # Nuevas posiciones = centro shuffleado + offset
             x_new[idx_gal] = X_shuf[orig_idx_all] + dx
@@ -273,7 +287,7 @@ def shuffle_galaxy_catalog_binned(
 
 
             # Nuevo main_id: el shuffleado correspondiente
-            main_id_new[idx_gal] = id_shuffled[orig_idx_all]
+            parent_id_new[idx_gal] = id_shuffled[orig_idx_all]
 
             if verbose:
                 print(f"Shuffled bin {i:02d}: {len(idx_gal)} galaxies, {n_halos} halos")
@@ -291,7 +305,12 @@ def shuffle_galaxy_catalog_binned(
         print(f"Saving shuffled catalog: {output_file}")
 
     with h5py.File(output_file, "w") as fout:
-        fout.create_dataset(galaxy_id_field, data=main_id_new)
+        if centralformats == 'sage':
+            main_id = parent_id_new
+        elif centralformats == 'galform':
+            host_id = parent_id_new
+        fout.create_dataset(galaxy_host_field, data=host_id)
+        fout.create_dataset(galaxy_id_field, data=main_id)
         fout.create_dataset(galaxy_x_field,  data=x_new)
         fout.create_dataset(galaxy_y_field,  data=y_new)
         fout.create_dataset(galaxy_z_field,  data=z_new)

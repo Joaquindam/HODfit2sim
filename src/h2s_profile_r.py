@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 import os
-from src.h2s_io import get_mask, check_file
+from src.h2s_io import get_mask, check_file, get_central
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import src.h2s_const as const
@@ -222,6 +222,7 @@ def compute_radial_profile(
     halo_x_key=3,
     halo_y_key=4,
     halo_z_key=5,
+    centralformats="sage",
     galaxy_id_key="MainHaloID",
     galaxy_host_key="HostHaloID",
     galaxy_x_key="Xpos",
@@ -261,22 +262,28 @@ def compute_radial_profile(
 
     # 1. Load parent halos and build halo_pos_dict
     if halo_format == "txt":
-        halos = np.loadtxt(halo_file)
-        # filter parent halos (pid == -1)
+        halos = np.loadtxt(halo_file, skiprows=1, comments='#')
         if testing:
             halos = halos[:const.testlimit_halos]
-            parent_mask = halos[:, halo_pid_key] == -1
-        else:
-            parent_mask = halos[:, halo_pid_key] == -1
-        parent_ids = halos[parent_mask, halo_id_key]
-        parent_x = halos[parent_mask, halo_x_key]
-        parent_y = halos[parent_mask, halo_y_key]
-        parent_z = halos[parent_mask, halo_z_key]
+
+        pids_array = halos[:, halo_pid_key]
+        mask_host = get_mask(pids_array, rockstar_format)
+        parent_ids = halos[mask_host, halo_id_key]
+        parent_x = halos[mask_host, halo_x_key]
+        parent_y = halos[mask_host, halo_y_key]
+        parent_z = halos[mask_host, halo_z_key]
+        print("\n--- COMPROBACIÓN DE TAMAÑOS ---")
+        print(f"Total de halos (pids_array): {len(pids_array)}")
+        print(f"Parent IDs filtrados: {len(parent_ids)}")
+        print(f"Coordenadas X filtradas: {len(parent_x)}")
+        print(f"Coordenadas Y filtradas: {len(parent_y)}")
+        print(f"Coordenadas Z filtradas: {len(parent_z)}")
+        print("-------------------------------\n")
     else:
         raise NotImplementedError("Only txt halos implemented for now.")
 
     halo_pos_dict = {hid: (x, y, z) for hid, x, y, z in zip(parent_ids, parent_x, parent_y, parent_z)}
-
+    allhalos_pos_dict = {hid: (x, y, z) for hid, x, y, z in zip(halos[:, halo_id_key], halos[:, halo_x_key], halos[:, halo_y_key], halos[:, halo_z_key])} #PRUEBAAA
     if verbose:
         print(f"Loaded {len(halo_pos_dict)} parent halos from {halo_file}.")
 
@@ -289,25 +296,91 @@ def compute_radial_profile(
         zpos = f[galaxy_z_key][:]
 
     # 3. Identify satellites
-    is_sat = host_id != main_id
+    #is_sat = host_id != main_id
+    is_c = get_central(host_id, main_id, centralformats)
+    is_sat = ~is_c
+
+    # --- CHIVATO PARA INVESTIGAR LOS SATÉLITES ---
+    if np.sum(is_sat) > 0:
+        tipos_satelites = main_id[is_sat]
+        ids_satelites = host_id[is_sat]
+        print(f"\n🔍 INVESTIGACIÓN DE SATÉLITES:")
+        print(f"   -> Hay {np.sum(is_sat)} satélites en total.")
+        print(f"   -> Sus 'types' (main_id) son: {np.unique(tipos_satelites)}")
+        print(f"   -> Ejemplo de sus id_halo: {ids_satelites[:5]}\n")
+    # --------------------
+
+    # --- CHIVATO: ESTUDIO TYPE 1 VS TYPE 2 ---
+    if np.sum(is_sat) > 0:
+        tipos_satelites = main_id[is_sat]
+        ids_satelites = host_id[is_sat]
+        xs_chivato = xpos[is_sat]
+        ys_chivato = ypos[is_sat]
+        zs_chivato = zpos[is_sat]
+        # Filtramos por Type 1 y Type 2
+        mask_t1 = (tipos_satelites == 0)
+        mask_t2 = (tipos_satelites == 2)
+        print(f"\n🔍 GENERANDO INFORME DE SATÉLITES PARA LA PROFESORA...")
+        print(f"   -> Satélites Type 1 (Con subhalo): {np.sum(mask_t1)}")
+        print(f"   -> Satélites Type 2 (Huérfanos): {np.sum(mask_t2)}")
+        # Guardamos todo en un archivo txt en tu carpeta actual
+        archivo_salida = "estudio_satelites_PROFILE0.txt"
+        with open(archivo_salida, "w") as f_out:
+            f_out.write("==== SATELITES TYPE 1 (CON SUBHALO) ====\n")
+            f_out.write("ID_HALO(Host)\tX\tY\tZ\n")
+            for i in np.where(mask_t1)[0]:
+                f_out.write(f"{ids_satelites[i]}\t{xs_chivato[i]:.4f}\t{ys_chivato[i]:.4f}\t{zs_chivato[i]:.4f}\n")
+
+            f_out.write("\n==== SATELITES TYPE 2 (HUERFANOS) ====\n")
+            f_out.write("ID_HALO(Host)\tX\tY\tZ\n")
+            for i in np.where(mask_t2)[0]:
+                f_out.write(f"{ids_satelites[i]}\t{xs_chivato[i]:.4f}\t{ys_chivato[i]:.4f}\t{zs_chivato[i]:.4f}\n")
+
+        print(f"   -> ¡Listo! Archivo guardado como: {archivo_salida}\n")
+    # -----------------------------------------------------------
+
+        
+
+    # For each satellite, its parent halo ID
+    if centralformats == 'sage':
+        halo_ids = main_id[is_sat]
+    elif centralformats == 'galform':
+        halo_ids = host_id[is_sat]
+
     xs = xpos[is_sat]
     ys = ypos[is_sat]
     zs = zpos[is_sat]
-    halo_ids = main_id[is_sat]  # For each satellite, its parent halo ID
+
 
     # 4. Match satellite galaxies to their halo positions
     xc, yc, zc = [], [], []
     missing = 0
-
+    contar1=0
+    contar2=0
+    contar3=0
     for hid in halo_ids:
         if hid in halo_pos_dict:
             xh, yh, zh = halo_pos_dict[hid]
+            #print ("id halo galNoCentral = ID de Parent halo")
+            contar1 += 1
         else:
+            #print("id halo galNoCentral =/ ID de Parent halo")
+            if hid in  allhalos_pos_dict:
+                #print ("id halo galNoCentral = ID de cualquier halo")
+                contar2 += 1
+            else:
+                #print ("id halo galNoCentral =/ ID de cualquier halo")
+                contar3 += 1
             xh, yh, zh = np.nan, np.nan, np.nan
             missing += 1
         xc.append(xh)
         yc.append(yh)
         zc.append(zh)
+
+    print(f"contar1 = {contar1}")
+    print(f"contar2 = {contar2}")
+    print(f"contar3 = {contar3}")
+    exit()
 
     xc, yc, zc = np.array(xc), np.array(yc), np.array(zc)
 
@@ -350,7 +423,9 @@ def compute_radial_profile_shuffled(
     halo_x_key=3,
     halo_y_key=4,
     halo_z_key=5,
+    centralformats="sage",
     galaxy_id_key="MainHaloID",
+    galaxy_host_key="HostHaloID",
     galaxy_is_central_key="is_central",
     galaxy_x_key="Xpos",
     galaxy_y_key="Ypos",
@@ -389,17 +464,19 @@ def compute_radial_profile_shuffled(
 
     # 1. Load parent halos and build halo_pos_dict
     if halo_format == "txt":
-        halos = np.loadtxt(halo_file)
+        halos = np.loadtxt(halo_file, skiprows=1, comments='#')
         # filter parent halos (pid == -1)
         if testing:
             halos = halos[:const.testlimit_halos]
-            parent_mask = halos[:, halo_pid_key] == -1
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
         else:
-            parent_mask = halos[:, halo_pid_key] == -1
-        parent_ids = halos[parent_mask, halo_id_key]
-        parent_x = halos[parent_mask, halo_x_key]
-        parent_y = halos[parent_mask, halo_y_key]
-        parent_z = halos[parent_mask, halo_z_key]
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
+        parent_ids = halos[mask_host, halo_id_key]
+        parent_x = halos[mask_host, halo_x_key]
+        parent_y = halos[mask_host, halo_y_key]
+        parent_z = halos[mask_host, halo_z_key]
     else:
         raise NotImplementedError("Only txt halos implemented for now.")
 
@@ -412,16 +489,24 @@ def compute_radial_profile_shuffled(
     with h5py.File(galaxy_file, "r") as f:
         is_central = f[galaxy_is_central_key][:]
         main_id = f[galaxy_id_key][:]
+        host_id    = f[galaxy_host_key][:]
         xpos = f[galaxy_x_key][:]
         ypos = f[galaxy_y_key][:]
         zpos = f[galaxy_z_key][:]
 
     # 3. Identify satellites
     is_sat = (is_central == 0)
+
+
+    if centralformats == 'sage':
+        parent_id = main_id
+    elif centralformats == 'galform':
+        parent_id = host_id
+    
     xs = xpos[is_sat]
     ys = ypos[is_sat]
     zs = zpos[is_sat]
-    halo_ids = main_id[is_sat]  # For each satellite, its parent halo ID
+    halo_ids = parent_id[is_sat]  # For each satellite, its parent halo ID
 
     # 4. Match satellite galaxies to their halo positions
     xc, yc, zc = [], [], []

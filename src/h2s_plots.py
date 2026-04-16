@@ -697,6 +697,10 @@ def plot_hmf_comparison(halo_bins_file, conformity_file, output_png=None,
 
         for i in range(70):
             group_name = f"bin_{i:02d}"
+            # --- ESCUDO ANTI-CAJONES VACÍOS (CON RELLENO DE CEROS) ---
+            if group_name not in f:
+                halo_counts_bins.append(0.0) # Apuntamos 0 halos y saltamos
+                continue
             mass = f[group_name]['Mass_shuffled'][:]   
             parent_mask = mass > 0
             halos_in_bin = np.sum(parent_mask)

@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 import os
-from src.h2s_io import get_mask check_file
+from src.h2s_io import get_mask, check_file, get_central
 from src.h2s_profile_r import get_r, get_diffpos
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
@@ -143,6 +143,7 @@ def compute_vr_profile(
     halo_vx_key=7,
     halo_vy_key=8,
     halo_vz_key=9,
+    centralformats="sage",
     galaxy_main_id_key="MainHaloID",
     galaxy_host_id_key="HostHaloID",
     galaxy_x_key="Xpos",
@@ -185,19 +186,21 @@ def compute_vr_profile(
 
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
-        halos = np.loadtxt(halo_file)
+        halos = np.loadtxt(halo_file, skiprows=1, comments='#')
         if testing:
             halos = halos[:const.testlimit_halos]
-            parent_mask = halos[:, halo_pid_key] == -1
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
         else:
-            parent_mask = halos[:, halo_pid_key] == -1
-        parent_ids = halos[parent_mask, halo_id_key]
-        parent_x = halos[parent_mask, halo_x_key]
-        parent_y = halos[parent_mask, halo_y_key]
-        parent_z = halos[parent_mask, halo_z_key]
-        parent_vx = halos[parent_mask, halo_vx_key]
-        parent_vy = halos[parent_mask, halo_vy_key]
-        parent_vz = halos[parent_mask, halo_vz_key]
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
+        parent_ids = halos[mask_host, halo_id_key]
+        parent_x = halos[mask_host, halo_x_key]
+        parent_y = halos[mask_host, halo_y_key]
+        parent_z = halos[mask_host, halo_z_key]
+        parent_vx = halos[mask_host, halo_vx_key]
+        parent_vy = halos[mask_host, halo_vy_key]
+        parent_vz = halos[mask_host, halo_vz_key]
     else:
         raise NotImplementedError("Only txt halos implemented for now.")
 
@@ -219,14 +222,23 @@ def compute_vr_profile(
         vz = f[galaxy_vz_key][:]
 
     # 3. Identify satellites
-    is_sat = host_id != main_id
+    #is_sat = host_id != main_id
+    is_c = get_central(host_id, main_id, centralformats)
+    is_sat = ~is_c
+
+    if centralformats == 'sage':
+        parent_id = main_id
+    elif centralformats == 'galform':
+        parent_id = host_id
+
+    
     xs = xpos[is_sat]
     ys = ypos[is_sat]
     zs = zpos[is_sat]
     vxs = vx[is_sat]
     vys = vy[is_sat]
     vzs = vz[is_sat]
-    halo_ids = main_id[is_sat]
+    halo_ids = parent_id[is_sat]
 
     n_sat = len(xs)
     xh, yh, zh = np.full(n_sat, np.nan), np.full(n_sat, np.nan), np.full(n_sat, np.nan)
@@ -293,7 +305,9 @@ def compute_vr_profile_shuffled(
     halo_vx_key=7,
     halo_vy_key=8,
     halo_vz_key=9,
+    centralformats="sage",
     galaxy_main_id_key="MainHaloID",
+    galaxy_host_id_key="HostHaloID",
     galaxy_is_central_key="is_central",
     galaxy_x_key="Xpos",
     galaxy_y_key="Ypos",
@@ -335,19 +349,21 @@ def compute_vr_profile_shuffled(
 
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
-        halos = np.loadtxt(halo_file)
+        halos = np.loadtxt(halo_file, skiprows=1, comments='#')
         if testing:
             halos = halos[:const.testlimit_halos]
-            parent_mask = halos[:, halo_pid_key] == -1
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
         else:
-            parent_mask = halos[:, halo_pid_key] == -1
-        parent_ids = halos[parent_mask, halo_id_key]
-        parent_x = halos[parent_mask, halo_x_key]
-        parent_y = halos[parent_mask, halo_y_key]
-        parent_z = halos[parent_mask, halo_z_key]
-        parent_vx = halos[parent_mask, halo_vx_key]
-        parent_vy = halos[parent_mask, halo_vy_key]
-        parent_vz = halos[parent_mask, halo_vz_key]
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
+        parent_ids = halos[mask_host, halo_id_key]
+        parent_x = halos[mask_host, halo_x_key]
+        parent_y = halos[mask_host, halo_y_key]
+        parent_z = halos[mask_host, halo_z_key]
+        parent_vx = halos[mask_host, halo_vx_key]
+        parent_vy = halos[mask_host, halo_vy_key]
+        parent_vz = halos[mask_host, halo_vz_key]
     else:
         raise NotImplementedError("Only txt halos implemented for now.")
 
@@ -361,6 +377,7 @@ def compute_vr_profile_shuffled(
     with h5py.File(galaxy_file, "r") as f:
         is_central = f[galaxy_is_central_key][:]
         main_id = f[galaxy_main_id_key][:]
+        host_id = f[galaxy_host_id_key][:]
         xpos = f[galaxy_x_key][:]
         ypos = f[galaxy_y_key][:]
         zpos = f[galaxy_z_key][:]
@@ -370,13 +387,20 @@ def compute_vr_profile_shuffled(
 
     # 3. Identify satellites
     is_sat = (is_central == 0)
+
+
+    if centralformats == 'sage':
+        parent_id = main_id
+    elif centralformats == 'galform':
+        parent_id = host_id
+    
     xs = xpos[is_sat]
     ys = ypos[is_sat]
     zs = zpos[is_sat]
     vxs = vx[is_sat]
     vys = vy[is_sat]
     vzs = vz[is_sat]
-    halo_ids = main_id[is_sat]
+    halo_ids = parent_id[is_sat]
 
     n_sat = len(xs)
     xh, yh, zh = np.full(n_sat, np.nan), np.full(n_sat, np.nan), np.full(n_sat, np.nan)
@@ -451,6 +475,7 @@ def compute_vtan_profile(
     galaxy_vx_key="Xvel",
     galaxy_vy_key="Yvel",
     galaxy_vz_key="Zvel",
+    centralformats="sage",
     testing=False,
     rockstar_format=False,
     verbose=True
@@ -487,19 +512,21 @@ def compute_vtan_profile(
 
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
-        halos = np.loadtxt(halo_file)
+        halos = np.loadtxt(halo_file, skiprows=1, comments='#')
         if testing:
             halos = halos[:const.testlimit_halos]
-            parent_mask = halos[:, halo_pid_key] == -1
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
         else:
-            parent_mask = halos[:, halo_pid_key] == -1
-        parent_ids = halos[parent_mask, halo_id_key]
-        parent_x = halos[parent_mask, halo_x_key]
-        parent_y = halos[parent_mask, halo_y_key]
-        parent_z = halos[parent_mask, halo_z_key]
-        parent_vx = halos[parent_mask, halo_vx_key]
-        parent_vy = halos[parent_mask, halo_vy_key]
-        parent_vz = halos[parent_mask, halo_vz_key]
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
+        parent_ids = halos[mask_host, halo_id_key]
+        parent_x = halos[mask_host, halo_x_key]
+        parent_y = halos[mask_host, halo_y_key]
+        parent_z = halos[mask_host, halo_z_key]
+        parent_vx = halos[mask_host, halo_vx_key]
+        parent_vy = halos[mask_host, halo_vy_key]
+        parent_vz = halos[mask_host, halo_vz_key]
     else:
         raise NotImplementedError("Only txt halos implemented for now.")
 
@@ -521,14 +548,24 @@ def compute_vtan_profile(
         vz = f[galaxy_vz_key][:]
 
     # 3. Identify satellites
-    is_sat = host_id != main_id
+    #is_sat = host_id != main_id
+    is_c = get_central(host_id, main_id, centralformats)
+    is_sat = ~is_c
+
+
+    if centralformats == 'sage':
+        parent_id = main_id
+    elif centralformats == 'galform':
+        parent_id = host_id
+
+    
     xs = xpos[is_sat]
     ys = ypos[is_sat]
     zs = zpos[is_sat]
     vxs = vx[is_sat]
     vys = vy[is_sat]
     vzs = vz[is_sat]
-    halo_ids = main_id[is_sat]
+    halo_ids = parent_id[is_sat]
 
     n_sat = len(xs)
     xh, yh, zh = np.full(n_sat, np.nan), np.full(n_sat, np.nan), np.full(n_sat, np.nan)
@@ -604,6 +641,7 @@ def compute_vtan_profile_shuffled(
     halo_vy_key=7,
     halo_vz_key=8,
     galaxy_main_id_key="MainHaloID",
+    galaxy_host_id_key="HostHaloID",
     galaxy_is_central_key="is_central",
     galaxy_x_key="Xpos",
     galaxy_y_key="Ypos",
@@ -611,6 +649,7 @@ def compute_vtan_profile_shuffled(
     galaxy_vx_key="Xvel",
     galaxy_vy_key="Yvel",
     galaxy_vz_key="Zvel",
+    centralformats="sage",
     testing=False,
     rockstar_format=False,
     verbose=True
@@ -647,19 +686,21 @@ def compute_vtan_profile_shuffled(
 
     # 1. Load parent halos and build halo_dict
     if halo_format == "txt":
-        halos = np.loadtxt(halo_file)
+        halos = np.loadtxt(halo_file, skiprows=1, comments='#')
         if testing:
             halos = halos[:const.testlimit_halos]
-            parent_mask = halos[:, halo_pid_key] == -1
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
         else:
-            parent_mask = halos[:, halo_pid_key] == -1
-        parent_ids = halos[parent_mask, halo_id_key]
-        parent_x = halos[parent_mask, halo_x_key]
-        parent_y = halos[parent_mask, halo_y_key]
-        parent_z = halos[parent_mask, halo_z_key]
-        parent_vx = halos[parent_mask, halo_vx_key]
-        parent_vy = halos[parent_mask, halo_vy_key]
-        parent_vz = halos[parent_mask, halo_vz_key]
+            pids_array = halos[:, halo_pid_key]
+            mask_host = get_mask(pids_array, rockstar_format)
+        parent_ids = halos[mask_host, halo_id_key]
+        parent_x = halos[mask_host, halo_x_key]
+        parent_y = halos[mask_host, halo_y_key]
+        parent_z = halos[mask_host, halo_z_key]
+        parent_vx = halos[mask_host, halo_vx_key]
+        parent_vy = halos[mask_host, halo_vy_key]
+        parent_vz = halos[mask_host, halo_vz_key]
     else:
         raise NotImplementedError("Only txt halos implemented for now.")
 
@@ -673,6 +714,7 @@ def compute_vtan_profile_shuffled(
     with h5py.File(galaxy_file, "r") as f:
         is_central = f[galaxy_is_central_key][:]
         main_id = f[galaxy_main_id_key][:]
+        host_id = f[galaxy_host_id_key][:]
         xpos = f[galaxy_x_key][:]
         ypos = f[galaxy_y_key][:]
         zpos = f[galaxy_z_key][:]
@@ -682,13 +724,20 @@ def compute_vtan_profile_shuffled(
 
     # 3. Identify satellites
     is_sat = (is_central == 0)
+
+
+    if centralformats == 'sage':
+        parent_id = main_id
+    elif centralformats == 'galform':
+        parent_id = host_id
+    
     xs = xpos[is_sat]
     ys = ypos[is_sat]
     zs = zpos[is_sat]
     vxs = vx[is_sat]
     vys = vy[is_sat]
     vzs = vz[is_sat]
-    halo_ids = main_id[is_sat]
+    halo_ids = parent_id[is_sat]
 
     n_sat = len(xs)
     xh, yh, zh = np.full(n_sat, np.nan), np.full(n_sat, np.nan), np.full(n_sat, np.nan)

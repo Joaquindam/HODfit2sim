@@ -1,10 +1,10 @@
 import numpy as np
-from src.h2s_io import get_mask, create_dir
+from src.h2s_io import get_mask, get_central, create_dir
 import h5py
 import os
 import src.h2s_const as const
 
-def load_halos(halo_file, file_format, col_pid, col_mass, testing=True, verbose=True): #quitar verbose=True
+def load_halos(halo_file, file_format, col_pid, col_mass, testing=False, verbose=True): #quitar verbose=True
     
     """
     Loads the halo catalog and returns PID and mass arrays.
@@ -42,7 +42,7 @@ def load_halos(halo_file, file_format, col_pid, col_mass, testing=True, verbose=
     if verbose:  
         print(f"Loading halos from {halo_file} (format={file_format})...")
     if file_format == "txt":
-        halos = np.loadtxt(halo_file)
+        halos = np.loadtxt(halo_file, skiprows=1)
         if testing:
             halos = halos[:const.testlimit_halos]
             pid = halos[:, col_pid]
@@ -129,6 +129,7 @@ def compute_conformity_parameters(
     halo_pid = 13,       
     halo_mass = 17,      
     galaxy_format="h5",
+    centralformats= "sage",
     gal_host_id="HostHaloID", 
     gal_main_id="MainHaloID",
     gal_main_mass="MainMhalo",
@@ -200,8 +201,8 @@ def compute_conformity_parameters(
     """
 
     # 1) Read & filter host halos (PID == -1 in col 13, logMvir from col 17)
-    pid, mass = load_halos(halo_file, halo_format, halo_pid, halo_mass)
-    mask_host = (pid == -1.0)
+    pid, mass = load_halos(halo_file, halo_format, halo_pid, halo_mass, testing=testing)
+    mask_host = get_mask(pid, rockstar_format=rockstar_format)
     logM_halos = np.log10(mass[mask_host])
 
     if verbose:
@@ -216,13 +217,18 @@ def compute_conformity_parameters(
         print(f"Loaded {len(mhalo)} galaxies from {galaxy_file}")
 
     # 3) Classify centrals vs satellites
-    is_c = (host_id == main_id)
+   # is_c = (host_id == main_id)
+    is_c = get_central(host_id, main_id, centralformats)
     is_s = ~is_c
 
     C_ids = host_id[is_c]
     C_m   = mhalo[is_c]
 
-    S_ids = main_id[is_s]
+    if centralformats == 'sage':
+        S_ids = main_id[is_s]
+    elif centralformats == 'galform':
+        S_ids = host_id[is_s]
+    #S_ids = main_id[is_s]
     S_m   = mhalo[is_s]
 
     sel_with    = np.isin(S_ids, C_ids)
@@ -335,6 +341,10 @@ def compute_conformity_parameters(
     bybin_counts_hosts = []  # number of hosts with >=1 satellite in the bin
 
     if S_ids.size > 0:
+        #Lo NUEVO
+        S_ids = np.atleast_1d(S_ids)
+        S_m = np.atleast_1d(S_m)
+        
         # Sort satellites by parent ID so groups are contiguous
         order = np.argsort(S_ids)
         pid_sorted  = S_ids[order]
@@ -422,7 +432,9 @@ def compute_conformity_parameters_shuffled(
     halo_pid = 13,       
     halo_mass = 17,       
     galaxy_format="h5",
-    gal_is_central="is_central", 
+    centralformats= "sage",
+    gal_is_central="is_central",
+    gal_host_id="MainHostID",
     gal_main_id="MainHaloID",
     gal_main_mass="MainMhalo",
     testing=False,
@@ -491,9 +503,9 @@ def compute_conformity_parameters_shuffled(
     Satellites are further split into those with a central galaxy in their halo and those without.
     """
 
-    # 1) Read & filter host halos (PID == -1 in col 13, logMvir from col 17)
-    pid, mass = load_halos(halo_file, halo_format, halo_pid, halo_mass)
-    mask_host = (pid == -1.0)
+    # 1) Read & filter host halos 
+    pid, mass = load_halos(halo_file, halo_format, halo_pid, halo_mass, testing=testing)
+    mask_host = get_mask(pid, rockstar_format=rockstar_format)
     logM_halos = np.log10(mass[mask_host])
 
     if verbose:
@@ -502,6 +514,7 @@ def compute_conformity_parameters_shuffled(
     with h5py.File(galaxy_file, "r") as f:
             is_central = np.asarray(f[gal_is_central][:])
             main_id = np.asarray(f[gal_main_id][:])
+            host_id = np.asarray(f[gal_host_id][:])
             main_mass    = np.asarray(f[gal_main_mass][:])
 
     # 2) Read galaxies (no further flux cut!
@@ -512,11 +525,18 @@ def compute_conformity_parameters_shuffled(
 
     if verbose:
         print(f"Loaded {len(logM_gal)} galaxies from {galaxy_file}")
+
+
+    # --- LA MAGIA SALVADORA: Elegir el ID Padre según el formato ---
+    if centralformats == 'sage':
+        parent_id = main_id
+    elif centralformats == 'galform':
+        parent_id = host_id
     
     # ========= KEY PART: does each halo have a central? =========
     # Group by MainHaloID and compute "has_central" per halo efficiently.
-    order = np.argsort(main_id)
-    mid_sorted = main_id[order]
+    order = np.argsort(parent_id)
+    mid_sorted = parent_id[order]
     cen_sorted = is_c[order].astype(np.int8)
 
     # start indices of groups (where halo id changes)
@@ -526,7 +546,7 @@ def compute_conformity_parameters_shuffled(
     unique_ids = mid_sorted[grp_starts]  # one id per group (sorted)
 
     # Map 'has_central' back to every galaxy (vectorized)
-    pos = np.searchsorted(unique_ids, main_id)
+    pos = np.searchsorted(unique_ids, parent_id)
     halo_has_central = has_central_by_group[pos]
 
     # Satellites WITH a central in their own halo / WITHOUT a central
@@ -539,7 +559,7 @@ def compute_conformity_parameters_shuffled(
     S_mwc  = logM_gal[sat_with_c_mask]    # satellites with central
     S_mwoc = logM_gal[sat_without_mask]   # satellites without central
 
-    S_parent_ids = main_id[is_s]  # halo padre de cada satélite
+    S_parent_ids = parent_id[is_s]  # halo padre de cada satélite
     if S_parent_ids.size > 0:
         uniq_parents, sats_per_parent = np.unique(S_parent_ids.astype(np.int64), return_counts=True)
         k_max = int(sats_per_parent.max())
